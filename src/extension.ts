@@ -1,54 +1,110 @@
-// The module 'vscode' contains the VS Code extensibility API
-// Import the module and reference it with the alias vscode in your code below
+
 import * as vscode from "vscode";
+import * as path from 'path';
 import { SidebarProvider } from "./SidebarProvider";
 import { HelloWorldPanel } from "./HelloWorldPanel";
+import { ReferenceDetail  } from "./types";
+import { OAuthClient } from "./OAuthClient";
+
+export const CONNECTION_STATUS_LABELS = {
+  CONNECTED: 'MATLAB: Connected',
+  NOT_CONNECTED: 'MATLAB: Not Connected',
+  CONNECTING: 'MATLAB: Establishing Connection'
+};
 
 // This method is called when your extension is activated
-// Your extension is activated the very first time the command is executed
 export function activate(context: vscode.ExtensionContext) {
-	// Use the console to output diagnostic information (console.log) and errors (console.error)
-	// This line of code will only be executed once when your extension is activated
-	console.log('Congratulations, your extension "matlab" is now active!');
-	const sidebarProvider = new SidebarProvider(context.extensionUri);
-	context.subscriptions.push(
-		vscode.window.registerWebviewViewProvider("matlab-sidebar", sidebarProvider)
-	);
+  console.log('Congratulations, your extension "matlab" is now active!');
 
-	// context.subscriptions.push(
-	// 	vscode.commands.registerCommand("matlab.helloWorld", () => {
-	// 		HelloWorldPanel.createOrShow(context.extensionUri);
-	// 	})
-	// )
+  // Create status bar item
+  const statusBarItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 100);
+  statusBarItem.text = CONNECTION_STATUS_LABELS.NOT_CONNECTED;
+  statusBarItem.show();
+  context.subscriptions.push(statusBarItem);
 
-	context.subscriptions.push(
-		vscode.commands.registerCommand("matlab.helloWorld", () => {
-			vscode.window.showInformationMessage("Hello World from MATLAB!");
-		})
-	)
-	// context.subscriptions.push(
-	// 	vscode.commands.registerCommand("matlab.askQuestion", () => {
-	// 		vscode.window.showInformationMessage("Hello World from MATLAB 2!");
-	// 	})
-	// )
+  // Initialize sidebar provider
+  const sidebarProvider = new SidebarProvider(context.extensionUri);
+  context.subscriptions.push(
+    vscode.window.registerWebviewViewProvider("matlab-sidebar", sidebarProvider)
+  );
 
-	// // The command has been defined in the package.json file
-	// // Now provide the implementation of the command with registerCommand
-	// // The commandId parameter must match the command field in package.json
-	// const disposable = vscode.commands.registerCommand(
-	// 	"matlab.helloWorld",
-	// 	() => {
-	// 		// The code you place here will be executed every time your command is executed
-	// 		// Display a message box to the user
-	// 		vscode.window.showInformationMessage("Hello World from MATLAB!");
-	// 	}
-	// );
+  // Initialize OAuth client
+  const oauthClient = new OAuthClient(statusBarItem, sidebarProvider);
+    // Start the OAuth server
+//   try {
+//      oauthClient.startServer();
+//     console.log("OAuth server started successfully");
+//   } catch (error) {
+//     console.error("Failed to start OAuth server:", error);
+//     vscode.window.showErrorMessage("Failed to start MATLAB authentication server. Please try again.");
+//   }
+  context.subscriptions.push({ dispose: () => oauthClient.dispose() });
 
-	// context.subscriptions.push(disposable);
+  // Register authentication command
+  context.subscriptions.push(
+    vscode.commands.registerCommand('matlab.authenticate', async () => {
+      statusBarItem.text = CONNECTION_STATUS_LABELS.CONNECTING;
+      await oauthClient.loginHandler();
+    })
+  );
 
+  // Register sign out command
+  context.subscriptions.push(
+    vscode.commands.registerCommand('matlab.signOut', async () => {
+      // Clear user data
+      await vscode.workspace.getConfiguration().update('ReferenceDetail ', undefined, vscode.ConfigurationTarget.Global);
 
+      // Update status
+      statusBarItem.text = CONNECTION_STATUS_LABELS.NOT_CONNECTED;
+      sidebarProvider.updateAuthStatus(false);
+
+      vscode.window.showInformationMessage('Signed out from MATLAB successfully');
+    })
+  );
+
+  // Register URI handler for auth callback
+  context.subscriptions.push(
+    vscode.window.registerUriHandler({
+      handleUri(uri: vscode.Uri): vscode.ProviderResult<void> {
+       console.log("Received URI:", uri.toString());
+
+  if (uri.path === '/auth-complete') {
+    const query = new URLSearchParams(uri.query);
+    const userDataStr = query.get('userData');
+
+    if (userDataStr) {
+      try {
+        const userData = JSON.parse(decodeURIComponent(userDataStr)) as ReferenceDetail ;
+        console.log("Parsed user data:", userData);
+
+        // Save user data to configuration
+        vscode.workspace.getConfiguration().update('ReferenceDetail ', userData, vscode.ConfigurationTarget.Global);
+
+        // Update status
+        statusBarItem.text = CONNECTION_STATUS_LABELS.CONNECTED;
+        sidebarProvider.updateAuthStatus(true, userData);
+
+        // Show a more detailed success message
+        vscode.window.showInformationMessage(
+          `Successfully connected to MATLAB as ${userData.displayName }`,
+          'OK'
+        );
+      } catch (error) {
+        console.error('Error parsing user data:', error);
+        vscode.window.showErrorMessage('Failed to parse authentication data');
+        statusBarItem.text = CONNECTION_STATUS_LABELS.NOT_CONNECTED;
+      }
+    }
+  }
+  return;
 }
+    })
+  );
 
-
-// This method is called when your extension is deactivated
-export function deactivate() { }
+  // Check if user is already authenticated on startup
+  const userData = vscode.workspace.getConfiguration().get('ReferenceDetail ') as ReferenceDetail  | undefined;
+  if (userData) {
+    statusBarItem.text = CONNECTION_STATUS_LABELS.CONNECTED;
+    sidebarProvider.updateAuthStatus(true, userData);
+  }
+}

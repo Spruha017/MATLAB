@@ -103,3 +103,9 @@
 <div style="padding: 20px; color: red; font-size: 24px;">
   Hello from Sidebar Component!
 </div>
+
+<button
+ on:click
+>
+  click me
+</button>
