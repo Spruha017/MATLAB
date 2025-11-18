@@ -14,7 +14,8 @@
     "onView:matlab-sidebar",
     "onCommand:matlab.helloWorld",
     "onCommand:matlab.hello",
-    "onUri"
+    "onUri",
+    "onCommand:otherExtension.sum"
   ],
   "main": "./dist/extension.js",
   "contributes": {
@@ -50,13 +51,19 @@
         "title": "Hello Matlab"
       },
       {
-      "command": "matlab.authenticate",
-      "title": "MATLAB: Sign In"
-    },
-    {
-      "command": "matlab.signOut",
-      "title": "MATLAB: Sign Out"
-    }
+        "command": "matlab.authenticate",
+        "category": "MATLAB1",
+        "title": " Sign In"
+      },
+      {
+        "command": "matlab.signOut",
+        "category": "MATLAB1",
+        "title": " Sign Out"
+      },
+      {
+        "command": "matlab.checkMatlabExtension",
+        "title": "MATLAB: Check Official MATLAB Extension Status"
+      }
     ]
   },
   "scripts": {
