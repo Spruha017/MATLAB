@@ -1,12 +1,33 @@
-
 import * as vscode from "vscode";
 import { ReferenceDetail } from "./types";
+
+interface LicensingInfo {
+  type: "oauth";
+  expiry: string;
+  email_addr: string;
+  first_name: string;
+  last_name: string;
+  display_name: string;
+  user_id: string;
+  source_id: string;
+  entitlements?: Array<{
+    id: string;
+    name: string;
+    expiry: string;
+    status: string;
+    product_number: string;
+    license_use: string;
+    permissions: string;
+    version: string;
+  }>;
+  entitlement_id?: string;
+}
 
 export class SidebarProvider implements vscode.WebviewViewProvider {
   _view?: vscode.WebviewView;
   private _isAuthenticated: boolean = false;
   private _userData?: ReferenceDetail;
-
+  private _licensingInfo?: LicensingInfo;
   constructor(private readonly _extensionUri: vscode.Uri) {
     this.loadUserData();
   }
@@ -19,6 +40,14 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     } else {
       this._isAuthenticated = false;
       this._userData = undefined;
+    }
+
+    //licensing
+    const licensingInfo = vscode.workspace
+      .getConfiguration()
+      .get("matlab.licensingInfo");
+    if (licensingInfo) {
+      this._licensingInfo = licensingInfo as LicensingInfo;
     }
   }
 
@@ -56,18 +85,18 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
           vscode.commands.executeCommand("matlab.signOut");
           break;
         }
-        case "openCommandWindow": {
-          vscode.commands.executeCommand("matlab.openMatlabCommandWindow");
-          break;
-        }
-        case "runFile": {
-          vscode.commands.executeCommand("matlab.runFile");
-          break;
-        }
-        case "checkExtension": {
-          vscode.commands.executeCommand("matlab.checkMatlabExtension");
-          break;
-        }
+        // case "openCommandWindow": {
+        //   vscode.commands.executeCommand("matlab.openMatlabCommandWindow");
+        //   break;
+        // }
+        // case "runFile": {
+        //   vscode.commands.executeCommand("matlab.runFile");
+        //   break;
+        // }
+        // case "checkExtension": {
+        //   vscode.commands.executeCommand("matlab.checkMatlabExtension");
+        //   break;
+        // }
       }
     });
   }
@@ -88,7 +117,20 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     }
   }
 
+  public updateLicensingInfo(licensingInfo: LicensingInfo | null) {
+    this._licensingInfo = licensingInfo || undefined;
+
+    if (this._view) {
+      this._view.webview.html = this._getHtmlForWebview(this._view.webview);
+    }
+  }
   private _getHtmlForWebview(webview: vscode.Webview) {
+    const selectedEntitlement = this._licensingInfo?.entitlement_id
+      ? this._licensingInfo.entitlements?.find(
+          (e) => e.id === this._licensingInfo?.entitlement_id
+        )
+      : this._licensingInfo?.entitlements?.[0];
+
     return `<!DOCTYPE html>
     <html lang="en">
     <head>
@@ -212,13 +254,16 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
         }
 
         .info-label {
-          font-weight: 600;
+          font-weight: 700;
           color: var(--vscode-foreground);
           margin-bottom: 4px;
+           font-size: 14px;
         }
 
         .info-value {
           color: var(--vscode-descriptionForeground);
+          font-size: 15px;
+          font-weight: 500;
         }
 
         .status-badge {
@@ -278,6 +323,66 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
                     this._userData?.email || "N/A"
                   }</div>
                 </div>
+
+                  ${
+                    this._licensingInfo?.entitlements &&
+                    this._licensingInfo.entitlements.length > 0
+                      ? `
+                  <div class="license-info">
+
+    <div class="info-item">
+      <div class="info-label">License Name</div>
+      <div class="info-value highlight-value">${
+        selectedEntitlement?.name || "N/A"
+      }</div>
+    </div>
+    <div class="info-item">
+      <div class="info-label">License Number</div>
+      <div class="info-value highlight-value">${
+        selectedEntitlement?.product_number || "N/A"
+      }</div>
+    </div>
+    ${
+      selectedEntitlement?.license_use
+        ? `
+    <div class="info-item">
+      <div class="info-label">License Use</div>
+      <div class="info-value">${selectedEntitlement.license_use}</div>
+    </div>
+    `
+        : ""
+    }
+    ${
+      selectedEntitlement?.permissions
+        ? `
+    <div class="info-item">
+      <div class="info-label">Permissions</div>
+      <div class="info-value">${selectedEntitlement.permissions}</div>
+    </div>
+    `
+        : ""
+    }
+    <div class="info-item">
+      <div class="info-label">Expiry Date</div>
+      <div class="info-value">${
+        selectedEntitlement?.expiry
+          ? new Date(selectedEntitlement.expiry).toLocaleDateString()
+          : "N/A"
+      }</div>
+    </div>
+    <div class="info-item">
+      <div class="info-label">Status</div>
+      <div class="info-value">${selectedEntitlement?.status || "N/A"}</div>
+    </div>
+    <div class="info-item">
+      <div class="info-label">MATLAB Version</div>
+      <div class="info-value">${selectedEntitlement?.version || "N/A"}</div>
+    </div>
+  </div>
+`
+                      : ""
+                  }
+
                 <div class="divider"></div>
                 <button class="button button-danger" onclick="signOut()">
                   🚪 Sign Out

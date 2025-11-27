@@ -40,6 +40,8 @@ interface Entitlement {
   expiry: string;
   status: string;
   product_number: string;
+  license_use: string;
+  permissions: string;
   version: string;
 }
 interface License {
@@ -65,7 +67,8 @@ interface LicensingInfo {
 
 const OAUTH_HOST =
   process.env.OAUTH_HOST || "https://signin-integ1.mathworks.com";
-const mhlm_api_endpoint = "https://licensing-integ1.mathworks.com/mls/service/v1/entitlement/list";
+const mhlm_api_endpoint =
+  "https://licensing-integ1.mathworks.com/mls/service/v1/entitlement/list";
 const CLIENT_ID = "go-test-client";
 const CLIENT_SECRET = "ramdomsecretkey";
 const REDIRECT_URI = "vscode://spruhath.matlab";
@@ -73,18 +76,7 @@ const LICENSING_API_BASE = "https://licensing.mathworks.com/api/v1";
 const DEFAULT_MATLAB_VERSION = "R2024b";
 
 const ENV_SUFFIX = process.env.ENV_SUFFIX || "";
-// const API_ENDPOINTS = {
-//   OAUTH_ENDPOINT:
-//     process.env.OAUTH_ENDPOINT || "https://signin-integ1.mathworks.com",
-//   MWA_API_ENDPOINT:
-//     process.env.MWA_API_ENDPOINT ||
-//     `https://login${ENV_SUFFIX}.mathworks.com/authenticationws/service/v4`,
-//   MHLM_API_ENDPOINT:
-//     process.env.MHLM_API_ENDPOINT ||
-//     `https://licensing${ENV_SUFFIX}.mathworks.com/mls/service/v1/entitlement/list`,
-//   // MWA_LOGIN:
-//   //   process.env.MWA_LOGIN || `https://login${ENV_SUFFIX}.mathworks.com`,
-// };
+
 
 const sessionStore: Record<string, SessionData> = {};
 
@@ -125,9 +117,9 @@ export class OAuthClient {
     await this.context.secrets.store("matlab.codeVerifier", this.codeVerifier);
     await this.context.globalState.update("matlab.sessionId", this.sessionId);
     const matlabVersion =
-      vscode.workspace.getConfiguration("matlab").get("version") ||
+      vscode.workspace.getConfiguration("MATLAB").get("version") ||
       DEFAULT_MATLAB_VERSION;
-
+    // get matlabVersion from install path
 
     const authParams = {
       response_type: "code",
@@ -208,30 +200,24 @@ export class OAuthClient {
       // Update extension state
       this.updateExtensionState(tokenResponse);
 
-      // for selecting entitalments
-      // if (this.licensingInfo?.entitlements && this.licensingInfo.entitlements.length === 1) {
-      //   await this.updateEntitlement(this.licensingInfo.entitlements[0].id);
-      //   vscode.window.showInformationMessage(`Auto-selected entitlement: ${this.licensingInfo.entitlements[0].name}`);
-      // } else if (this.licensingInfo?.entitlements && this.licensingInfo.entitlements.length > 1) {
-      //   // If multiple entitlements, prompt user to select one
-      //   this.promptForEntitlementSelection();
-      // } else {
-      //   vscode.window.showWarningMessage("No MATLAB entitlements found for your account");
-      // }
+
     } catch (error) {
       console.error("Authentication error:", error);
-      vscode.window.showErrorMessage(`Authentication failed: ${error instanceof Error ? error.message : String(error)}`);
+      vscode.window.showErrorMessage(
+        `Authentication failed: ${
+          error instanceof Error ? error.message : String(error)
+        }`
+      );
       this.statusBarItem.text = "MATLAB: Not Connected";
     }
 
-      // Clear temporary data
-      await this.context.secrets.delete("matlab.codeVerifier");
-      await this.context.globalState.update("matlab.sessionId", undefined);
+    // Clear temporary data
+    await this.context.secrets.delete("matlab.codeVerifier");
+    await this.context.globalState.update("matlab.sessionId", undefined);
 
-      vscode.window.showInformationMessage("Successfully connected to MATLAB");
+    vscode.window.showInformationMessage("Successfully connected to MATLAB");
 
-      // Open a success page in the browser
-
+    // Open a success page in the browser
   }
 
   private async exchangeAuthCodeForToken(
@@ -263,163 +249,148 @@ export class OAuthClient {
 
     const token = (await response.json()) as Token;
 
-    // //  Step 2: Verify MATLAB License and Entitlements
-    // const licenseInfo = await this.verifyLicense(token.access_token);
-    // const entitlements = await this.getEntitlements(token.access_token);
 
-    // if (!licenseInfo || licenseInfo.length === 0) {
-    //   vscode.window.showErrorMessage("No valid MATLAB license found for this account.");
-    //   throw new Error("No valid MATLAB license found for this account.");
-    // }
-
-    // console.log("✅ MATLAB License Verified:", licenseInfo);
-    // console.log("🎫 Entitlements:", entitlements);
 
     return token;
   }
 
   // required
- private async setLicensingOAuth(tokenResponse: Token): Promise<void> {
+  private async setLicensingOAuth(tokenResponse: Token): Promise<void> {
     // Get MATLAB version from settings
-const matlabVersion: string = vscode.workspace.getConfiguration("matlab").get<string>("version") || DEFAULT_MATLAB_VERSION;
+    const matlabVersion: string =
+      vscode.workspace.getConfiguration("matlab").get<string>("version") ||
+      DEFAULT_MATLAB_VERSION;
 
-     // Create licensing info object similar to the MATLAB proxy implementation
-  this.licensingInfo = {
-    type: "oauth",
-    expiry: tokenResponse.expirationDate, // Default to 1 hour from now if missing
-    email_addr: tokenResponse.referenceDetail.email || "",
-    first_name: tokenResponse.referenceDetail.firstName || "",
-    last_name: tokenResponse.referenceDetail.lastName || "",
-    display_name: tokenResponse.referenceDetail.displayName || "",
-    user_id: tokenResponse.referenceDetail.userId || "",
-    source_id: CLIENT_ID,
-  };
+    // Create licensing info object similar to the MATLAB proxy implementation
+    this.licensingInfo = {
+      type: "oauth",
+      expiry: tokenResponse.expirationDate,
+      email_addr: tokenResponse.referenceDetail.email || "",
+      first_name: tokenResponse.referenceDetail.firstName || "",
+      last_name: tokenResponse.referenceDetail.lastName || "",
+      display_name: tokenResponse.referenceDetail.displayName || "",
+      user_id: tokenResponse.referenceDetail.userId || "",
+      source_id: CLIENT_ID,
+    };
 
-  // Fetch entitlements
-  const entitlements = await this.fetchEntitlements(
-    tokenResponse.accessTokenString || tokenResponse.access_token || "",
-    matlabVersion
-  );
+    // Fetch entitlements
+    const entitlements = await this.fetchEntitlements(
+      tokenResponse.accessTokenString || tokenResponse.access_token || "",
+      matlabVersion
+    );
 
-     this.licensingInfo.entitlements = entitlements || undefined;
+    this.licensingInfo.entitlements = entitlements || undefined;
 
     // Store licensing info in global state
-    await this.context.globalState.update("matlab.licensingInfo", this.licensingInfo);
-
+    await this.context.globalState.update(
+      "matlab.licensingInfo",
+      this.licensingInfo
+    );
+    this.sidebarProvider.updateLicensingInfo(this.licensingInfo);
     console.log("Licensing info set:", this.licensingInfo);
   }
 
-// /// correct fetchEntitlements
+  // /// correct fetchEntitlements
 
- private async fetchEntitlements(accessToken: string, matlabVersion: string): Promise<Entitlement[] | null> {
-   try {
+  private async fetchEntitlements(
+    accessToken: string,
+    matlabVersion: string
+  ): Promise<Entitlement[] | null> {
+    try {
       // Create form data similar to the Python code
       const formData = new URLSearchParams({
-      token: accessToken,
-      release: matlabVersion,
-      coreProduct: 'ML',
-      context: 'vscode', // Using vscode instead of jupyter for our context
-      excludeExpired: 'true'
-    });
+        token: accessToken,
+        release: matlabVersion,
+        coreProduct: "ML",
+        context: "vscode",
+        excludeExpired: "true",
+      });
 
-     console.log(`Sending request to: ${mhlm_api_endpoint}`);
+      console.log(`Sending request to: ${mhlm_api_endpoint}`);
 
-    const response = await fetch(mhlm_api_endpoint, {
-      method: 'POST',
-      headers: {
-        'content-type': 'application/x-www-form-urlencoded'
-      },
-      body: formData.toString()
-    });
+      const response = await fetch(mhlm_api_endpoint, {
+        method: "POST",
+        headers: {
+          "content-type": "application/x-www-form-urlencoded",
+        },
+        body: formData.toString(),
+      });
 
-    if (!response.ok) {
-      throw new Error(`Communication with ${mhlm_api_endpoint} failed (${response.status}). For more details, see the MathWorks licensing portal.`);
+      if (!response.ok) {
+        throw new Error(
+          `Communication with ${mhlm_api_endpoint} failed (${response.status}). For more details, see the MathWorks licensing portal.`
+        );
+      }
+
+      const text = await response.text();
+
+      // Parse XML response
+
+      const parser = new (require("xml2js").Parser)({ explicitArray: false });
+      const result = await parser.parseStringPromise(text);
+
+      const root = result;
+      const entitlementEl = root?.describe_entitlements_response?.entitlements;
+
+      if (!entitlementEl || !entitlementEl.entitlement) {
+        throw new Error(
+          `Your MathWorks account is not linked to a valid license for MATLAB ${matlabVersion}. Sign out and login with a licensed user.`
+        );
+      }
+
+      // Handle both single entitlement and array of entitlements
+      const entitlements = Array.isArray(entitlementEl.entitlement)
+        ? entitlementEl.entitlement
+        : [entitlementEl.entitlement];
+
+      return entitlements.map((entitlement: any) => ({
+        id: String(entitlement.id || ""),
+        name: String(entitlement.label || ""),
+        // expiry: String(entitlement.expiry || new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString()),
+        // status: String(entitlement.status || "blabla"),
+        product_number: String(entitlement.license_number || ""),
+        license_use: String(entitlement.license_use || ""),
+        permissions: String(entitlement.permissions || ""),
+        version: matlabVersion,
+      }));
+    } catch (error) {
+      console.error("Error fetching entitlements:", error);
+      vscode.window.showWarningMessage(
+        `Could not fetch MATLAB entitlements: ${
+          error instanceof Error ? error.message : String(error)
+        }`
+      );
+      return null;
     }
-
-    const text = await response.text();
-
-    // Parse XML response
-
-    const parser = new (require('xml2js')).Parser({ explicitArray: false });
-    const result = await parser.parseStringPromise(text);
-
-    const root = result;
-    const entitlementEl = root?.describe_entitlements_response?.entitlements;
-
-    if (!entitlementEl || !entitlementEl.entitlement) {
-      throw new Error(`Your MathWorks account is not linked to a valid license for MATLAB ${matlabVersion}. Sign out and login with a licensed user.`);
-    }
-
-    // Handle both single entitlement and array of entitlements
-    const entitlements = Array.isArray(entitlementEl.entitlement)
-      ? entitlementEl.entitlement
-      : [entitlementEl.entitlement];
-
-    return entitlements.map((entitlement: any) => ({
-      id: String(entitlement.id || ""),
-      name: String(entitlement.label || ""),
-      expiry: String(entitlement.expiry || new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString()),
-      status: String(entitlement.status || "ACTIVE"),
-      product_number: String(entitlement.license_number || ""),
-      version: matlabVersion
-    }));
-
-  } catch (error) {
-    console.error("Error fetching entitlements:", error);
-    vscode.window.showWarningMessage(`Could not fetch MATLAB entitlements: ${error instanceof Error ? error.message : String(error)}`);
-    return null;
   }
-}
 
 
-  // private async fetchEntitlements(accessToken: string, matlabVersion: string): Promise<Entitlement[]> {
-  //   try {
-  //     // Add version as a query parameter
-  //     const url = new URL( mhlm_api_endpoint);
-  //     url.searchParams.append("version", matlabVersion);
-
-  //     const response = await fetch(url.toString(), {
-  //       method: "POST",
-  //       headers: {
-  //         "Authorization": `Bearer ${accessToken}`,
-  //         "Accept": "application/json"
-  //       },
-  //     });
-
-  //     if (!response.ok) {
-  //       const errorText = await response.text();
-  //       throw new Error(`Entitlements API returned ${response.status}: ${errorText}`);
-  //     }
-
-  //     return await response.json() as Entitlement[];
-  //   } catch (error) {
-  //     console.error("Error fetching entitlements:", error);
-  //     return []; // Return empty array instead of failing completely
-  //   }
-  // }
-
-  // imp for entitlements
   private async promptForEntitlementSelection(): Promise<void> {
-    if (!this.licensingInfo?.entitlements || this.licensingInfo.entitlements.length === 0) {
+    if (
+      !this.licensingInfo?.entitlements ||
+      this.licensingInfo.entitlements.length === 0
+    ) {
       vscode.window.showWarningMessage("No entitlements available to select");
       return;
     }
 
-    const entitlementItems = this.licensingInfo.entitlements.map(e => ({
+    const entitlementItems = this.licensingInfo.entitlements.map((e) => ({
       label: e.name,
       description: `Expires: ${new Date(e.expiry).toLocaleDateString()}`,
       detail: `Status: ${e.status}`,
-      id: e.id
+      id: e.id,
     }));
 
     const selected = await vscode.window.showQuickPick(entitlementItems, {
       placeHolder: "Select a MATLAB entitlement to use",
-      canPickMany: false
+      canPickMany: false,
     });
 
     if (selected) {
       await this.updateEntitlement(selected.id);
-      vscode.window.showInformationMessage(`Selected entitlement: ${selected.label}`);
+      vscode.window.showInformationMessage(
+        `Selected entitlement: ${selected.label}`
+      );
     }
   }
 
@@ -432,7 +403,10 @@ const matlabVersion: string = vscode.workspace.getConfiguration("matlab").get<st
     }
 
     this.licensingInfo.entitlement_id = entitlementId;
-    await this.context.globalState.update("matlab.licensingInfo", this.licensingInfo);
+    await this.context.globalState.update(
+      "matlab.licensingInfo",
+      this.licensingInfo
+    );
 
     // Notify the sidebar of the updated entitlement
     this.sidebarProvider.updateLicensingInfo(this.licensingInfo);
@@ -450,20 +424,23 @@ const matlabVersion: string = vscode.workspace.getConfiguration("matlab").get<st
     }
 
     try {
-      // Update MATLAB configuration with the selected entitlement
-      // This would be where you'd integrate with the MATLAB configuration
+
 
       // For example, update settings
-      await vscode.workspace.getConfiguration("matlab").update(
-        "selectedEntitlement",
-        this.licensingInfo.entitlement_id,
-        vscode.ConfigurationTarget.Global
+      await vscode.workspace
+        .getConfiguration("matlab")
+        .update(
+          "selectedEntitlement",
+          this.licensingInfo.entitlement_id,
+          vscode.ConfigurationTarget.Global
+        );
+
+
+
+      console.log(
+        "Updated MATLAB configuration with entitlement:",
+        this.licensingInfo.entitlement_id
       );
-
-      // You could also update a configuration file or send the information
-      // to the MATLAB process
-
-      console.log("Updated MATLAB configuration with entitlement:", this.licensingInfo.entitlement_id);
     } catch (error) {
       console.error("Error updating MATLAB configuration:", error);
     }
@@ -494,7 +471,9 @@ const matlabVersion: string = vscode.workspace.getConfiguration("matlab").get<st
       this.sidebarProvider.updateAuthStatus(false, null);
       this.sidebarProvider.updateLicensingInfo(null);
 
-      vscode.window.showInformationMessage("Successfully signed out from MATLAB");
+      vscode.window.showInformationMessage(
+        "Successfully signed out from MATLAB"
+      );
     } catch (error) {
       console.error("Error during sign out:", error);
       vscode.window.showErrorMessage("Failed to sign out from MATLAB");
@@ -502,14 +481,7 @@ const matlabVersion: string = vscode.workspace.getConfiguration("matlab").get<st
   }
   private async updateExtensionState(tokenResponse: Token): Promise<void> {
     console.log(tokenResponse.referenceDetail);
-    // Store access token securely if available
-    // if (tokenResponse.access_token) {
-    //   await this.context.secrets.store('matlab.accessToken', tokenResponse.access_token);
-    // }
 
-    // Update status bar to show connected state
-
-    // Update sidebar to show authenticated state with user info
     this.sidebarProvider.updateAuthStatus(true, tokenResponse.referenceDetail);
     this.statusBarItem.text = "MATLAB: Connected";
   }
