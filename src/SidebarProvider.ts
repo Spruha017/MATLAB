@@ -85,18 +85,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
           vscode.commands.executeCommand("matlab.signOut");
           break;
         }
-        // case "openCommandWindow": {
-        //   vscode.commands.executeCommand("matlab.openMatlabCommandWindow");
-        //   break;
-        // }
-        // case "runFile": {
-        //   vscode.commands.executeCommand("matlab.runFile");
-        //   break;
-        // }
-        // case "checkExtension": {
-        //   vscode.commands.executeCommand("matlab.checkMatlabExtension");
-        //   break;
-        // }
+
       }
     });
   }
