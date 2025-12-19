@@ -6,6 +6,7 @@ import * as crypto from "crypto";
 import * as querystring from "querystring";
 import fetch from "node-fetch";
 import { ReferenceDetail } from "./types";
+import { MatlabAuthenticationProvider } from "./MatlabAuthProvider";
 
 type Token = {
   authenticationDate: string;
@@ -86,14 +87,17 @@ export class OAuthClient {
   private statusBarItem: vscode.StatusBarItem;
   private sidebarProvider: any;
   private licensingInfo: LicensingInfo | null = null;
+  // private authProvider: any;
 
   constructor(
     private readonly context: vscode.ExtensionContext,
     statusBarItem: vscode.StatusBarItem,
-    sidebarProvider: any
+    sidebarProvider: any,
+    private authProvider: MatlabAuthenticationProvider
   ) {
     this.statusBarItem = statusBarItem;
     this.sidebarProvider = sidebarProvider;
+    this.authProvider = authProvider;
   }
 
   private generateSessionId(): string {
@@ -198,7 +202,20 @@ export class OAuthClient {
       await this.setLicensingOAuth(tokenResponse);
 
       // Update extension state
-      this.updateExtensionState(tokenResponse);
+
+
+     if (this.authProvider) {
+  const referenceDetail = tokenResponse.referenceDetail;
+
+  await this.authProvider.createSessionFromOAuth(
+    tokenResponse.accessTokenString || tokenResponse.access_token,
+    {
+      id: referenceDetail.userId || referenceDetail.referenceId || crypto.randomBytes(16).toString('hex'),
+      email: referenceDetail.email || 'unknown@mathworks.com',
+      name: referenceDetail.displayName || `${referenceDetail.firstName || ''} ${referenceDetail.lastName || ''}`.trim() || 'MATLAB User'
+    }
+  );
+}
 
 
     } catch (error) {
@@ -480,9 +497,22 @@ export class OAuthClient {
     }
   }
   private async updateExtensionState(tokenResponse: Token): Promise<void> {
-    console.log(tokenResponse.referenceDetail);
+    console.log("Updating extension state with user data:", tokenResponse.referenceDetail);
 
-    this.sidebarProvider.updateAuthStatus(true, tokenResponse.referenceDetail);
+  // Store user data in global state (for MatlabAuthProvider)
+  await this.context.globalState.update(
+    "matlab.userData",
+    tokenResponse.referenceDetail
+  );
+
+  // Store access token in secrets (more secure, for MatlabAuthProvider)
+  await this.context.secrets.store(
+    "matlab.accessToken",
+    tokenResponse.accessTokenString || tokenResponse.access_token || ""
+  );
+
+  // Update sidebar
+  this.sidebarProvider.updateAuthStatus(true, tokenResponse.referenceDetail);
     this.statusBarItem.text = "MATLAB: Connected";
   }
 }

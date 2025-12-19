@@ -4,6 +4,7 @@ import * as vscode from "vscode";
 import { SidebarProvider } from "./SidebarProvider";
 import { ReferenceDetail } from "./types";
 import { OAuthClient } from "./OAuthClient";
+import { MatlabAuthenticationProvider } from "./MatlabAuthProvider";
 import {
     LanguageClient, LanguageClientOptions, ServerOptions, TransportKind
 } from 'vscode-languageclient/node'
@@ -19,6 +20,8 @@ const MATLAB_EXTENSION_ID = "MathWorks.language-matlab";
 const OTHER_EXTENSION_ID = "spruha.matlab-inter-extension";
 
 export async function activate(context: vscode.ExtensionContext) {
+
+
   console.log('MATLAB extension "matlab" is now active!');
   vscode.window.showInformationMessage("Welcome to MATLAB extension");
 
@@ -40,8 +43,21 @@ export async function activate(context: vscode.ExtensionContext) {
       await oauthClient.loginHandler();
     })
   );
+const matlabAuthProvider = new MatlabAuthenticationProvider(context);
+  const oauthClient = new OAuthClient(context, statusBarItem, sidebarProvider, matlabAuthProvider);
 
-  const oauthClient = new OAuthClient(context, statusBarItem, sidebarProvider);
+
+
+  context.subscriptions.push(
+    vscode.authentication.registerAuthenticationProvider(
+      MatlabAuthenticationProvider.ID,
+      "MATLAB",
+      matlabAuthProvider,
+      { supportsMultipleAccounts: false }
+    )
+  );
+
+ context.subscriptions.push(matlabAuthProvider);
 
   const uriHandler = vscode.window.registerUriHandler({
     handleUri: async (uri: vscode.Uri) => {
@@ -234,7 +250,6 @@ export async function activate(context: vscode.ExtensionContext) {
   // }
 
 // notification
-
 
 
    const clientOptions: LanguageClientOptions = {
